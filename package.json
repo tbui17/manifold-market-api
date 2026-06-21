@@ -2,18 +2,42 @@
   "name": "openclaw-plugin-manifold-markets",
   "version": "0.1.0",
   "type": "module",
-  "private": true,
+  "description": "OpenClaw tool plugin and standalone MCP server wrapping the Manifold Markets public REST API.",
+  "license": "MIT",
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "manifold",
+    "manifold-markets",
+    "prediction-markets",
+    "mcp",
+    "model-context-protocol",
+    "api"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tbui17/manifold-market-api.git"
+  },
+  "homepage": "https://github.com/tbui17/manifold-market-api#readme",
+  "bugs": {
+    "url": "https://github.com/tbui17/manifold-market-api/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "plugin:build": "npm run build && openclaw plugins build --entry ./dist/index.js",
     "plugin:validate": "npm run build && openclaw plugins validate --entry ./dist/index.js",
     "test": "vitest run",
-    "mcp:start": "node dist/mcp-server.js"
+    "mcp:start": "node dist/mcp-server.js",
+    "prepublishOnly": "npm run plugin:validate && npm test"
   },
   "files": [
     "dist",
     "openclaw.plugin.json",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "peerDependencies": {
     "openclaw": ">=2026.5.17"
