@@ -53,9 +53,17 @@ export function createUserTools(tool: ToolFactory) {
         "List users with cursor-based pagination. Maximum 1000 results per page.",
         Type.Object({
           before: Type.Optional(Type.String()),
+          limit: Type.Optional(Type.Number({ minimum: 0, maximum: 1000, description: "Max results per page" })),
+          order: Type.Optional(Type.Union([Type.Literal("asc"), Type.Literal("desc")])),
         }),
         "users",
-        (p) => ({ before: p.before }),
+        (p) => {
+          const q: Record<string, unknown> = {};
+          if (p.before !== undefined) q.before = p.before;
+          if (p.limit !== undefined) q.limit = p.limit;
+          if (p.order !== undefined) q.order = p.order;
+          return q;
+        },
       ),
     ),
     tool(
@@ -64,8 +72,8 @@ export function createUserTools(tool: ToolFactory) {
         "Search users by username or display name.",
         Type.Object({
           term: Type.String(),
-          limit: Type.Optional(Type.Number({ minimum: 1, maximum: 1000 })),
-          page: Type.Optional(Type.Number({ minimum: 1 })),
+          limit: Type.Optional(Type.Number({ minimum: 0, maximum: 1000 })),
+          page: Type.Optional(Type.Number({ minimum: 0 })),
         }),
         "search-users",
         (p) => ({

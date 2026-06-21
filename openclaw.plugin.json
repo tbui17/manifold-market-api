@@ -2,7 +2,7 @@
   "id": "manifold-markets",
   "name": "Manifold Markets",
   "description": "Query and act on Manifold Markets prediction markets — search markets, fetch users, place bets, manage positions, and more.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "configSchema": {
     "type": "object",
     "properties": {

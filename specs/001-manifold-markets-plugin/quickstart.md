@@ -216,9 +216,8 @@ export MANIFOLD_API_KEY="your-key-here"
 npm test
 ```
 
-**Expected outcome**:
-- Without key: all ~16 read-only endpoint tests pass. Any auth-required tests are reported as skipped (not failed). Zero failures.
-- With key: all tests pass, including authenticated read tests (`manifold_get_me`, `manifold_get_portfolio`, etc.). Zero failures.
+- Without key: all ~19 public read-only endpoint tests pass. Any auth-required tests are reported as skipped (not failed). Zero failures.
+- With key: all tests pass, including authenticated read tests (`manifold_get_me`, `get_portfolio`, etc.). Zero failures.
 - The test file (`src/index.test.ts`) contains separate describe blocks or conditionals that distinguish public-read tests from auth-required tests.
 
 **FR/SC coverage**: FR-020 (live API coverage, no sampling), FR-010 (tool-name/manifest sync assertions), SC-010 (full coverage, auth separation), Q2 (clarified decision).

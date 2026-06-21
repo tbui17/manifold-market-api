@@ -136,7 +136,7 @@
 **Purpose**: Final validation, documentation, and publish readiness
 
 - [x] T030 [P] Run full `npm run plugin:validate` — passes; all 40 tool names in `openclaw.plugin.json` contracts.tools match exported tools (FR-010/SC-004).
-- [x] T031 [P] Run full `npm test` — 48 tests pass. Includes full public read-only coverage (20 tools), auth-required tests gated by MANIFOLD_API_KEY, error shape tests, MCP parity tests, and manifest sync tests.
+- [x] T031 [P] Run full `npm test` — 48 tests pass. Includes full public read-only coverage (19 tools), auth-required tests gated by MANIFOLD_API_KEY, error shape tests, MCP parity tests, and manifest sync tests.
 - [x] T032 [P] Update `README.md` with OpenClaw install instructions, MCP server usage, and feature summary.
 - [x] T033 [P] Verify uniform error shape across all error types — covered by tests: 404 upstream-category error and auth-category 401 error.
 

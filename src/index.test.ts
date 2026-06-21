@@ -9,12 +9,13 @@ const mcpToolNames = new Set(mcpTools.map((t) => t.name));
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-let cache: { marketId: string; marketSlug: string; userId: string; username: string; groupId: string } = {
+let cache: { marketId: string; marketSlug: string; userId: string; username: string; groupId: string; authedUserId: string } = {
   marketId: "",
   marketSlug: "",
   userId: "",
   username: "",
   groupId: "",
+  authedUserId: "",
 };
 
 /** Extract first object with an `id` from a response that may be a raw array or a wrapped object. */
@@ -76,7 +77,8 @@ async function discoverMarket(): Promise<void> {
         cache.marketSlug = (Array.isArray(results) ? (results as { slug?: string }[])[0]?.slug : "") as string;
       }
     }
-  } catch {
+  } catch (e) {
+    console.warn(`discoverMarket failed: ${(e as Error).message}`);
     const listTool = mcpTools.find((t) => t.name === "manifold_list_markets");
     if (listTool) {
       try {
@@ -88,7 +90,7 @@ async function discoverMarket(): Promise<void> {
             cache.marketSlug = ((result as Record<string, unknown>[])?.[0]?.slug ?? "") as string;
           }
         }
-      } catch { /* ignore */ }
+      } catch (e) { console.warn(`discoverMarket (list fallback) failed: ${(e as Error).message}`); }
     }
   }
 }
@@ -106,7 +108,7 @@ async function discoverUser(): Promise<void> {
         cache.username = found.username;
         return;
       }
-    } catch { /* ignore */ }
+    } catch (e) { console.warn(`discoverUser failed: ${(e as Error).message}`); }
   }
 
   if (cache.marketId) {
@@ -130,7 +132,7 @@ async function discoverUser(): Promise<void> {
             }
           }
         }
-      } catch { /* ignore */ }
+      } catch (e) { console.warn(`discoverUser (position fallback) failed: ${(e as Error).message}`); }
     }
   }
 }
@@ -145,7 +147,7 @@ async function discoverGroup(): Promise<void> {
     if (id) {
       cache.groupId = id;
     }
-  } catch { /* ignore */ }
+  } catch (e) { console.warn(`discoverGroup failed: ${(e as Error).message}`); }
 }
 
 // ── Inventory parity (SC-004, SC-005, FR-010) ──────────────────────
@@ -197,23 +199,27 @@ describe("live API — public read tools", () => {
     await discoverGroup();
   }, 10000);
 
-  function runLiveTest(toolName: string, makeArgs: () => Record<string, unknown>): void {
-    it(toolName, async () => {
+  function runLiveTest(
+    toolName: string,
+    makeArgs: () => Record<string, unknown>,
+    shape: "array" | "object" | "prob",
+  ): void {
+    it(toolName, async (ctx) => {
       const tool = mcpTools.find((t) => t.name === toolName);
       expect(tool).toBeDefined();
       if (!tool) return;
 
-      // If dynamic discovery failed, skip dependent tests
-      if (toolName === "manifold_get_market" && !cache.marketId) return;
-      if (toolName === "manifold_get_market_by_slug" && !cache.marketSlug) return;
-      if (toolName === "manifold_get_market_prob" && !cache.marketId) return;
-      if (toolName === "manifold_get_market_probs" && !cache.marketId) return;
-      if (toolName === "manifold_get_market_positions" && !cache.marketId) return;
-      if (toolName === "manifold_get_user_by_id" && !cache.userId) return;
-      if (toolName === "manifold_get_user_by_id_lite" && !cache.userId) return;
-      if (toolName === "manifold_get_comments" && !cache.marketId) return;
-      if (toolName === "manifold_get_group_by_id" && !cache.groupId) return;
-      if ((toolName === "manifold_get_user" || toolName === "manifold_get_user_lite") && !cache.username) return;
+      // If dynamic discovery failed, skip dependent tests (visible, not silent)
+      if (toolName === "manifold_get_market" && !cache.marketId) { ctx.skip(true, "No market discovered"); return; }
+      if (toolName === "manifold_get_market_by_slug" && !cache.marketSlug) { ctx.skip(true, "No market slug discovered"); return; }
+      if (toolName === "manifold_get_market_prob" && !cache.marketId) { ctx.skip(true, "No market discovered"); return; }
+      if (toolName === "manifold_get_market_probs" && !cache.marketId) { ctx.skip(true, "No market discovered"); return; }
+      if (toolName === "manifold_get_market_positions" && !cache.marketId) { ctx.skip(true, "No market discovered"); return; }
+      if (toolName === "manifold_get_user_by_id" && !cache.userId) { ctx.skip(true, "No user discovered"); return; }
+      if (toolName === "manifold_get_user_by_id_lite" && !cache.userId) { ctx.skip(true, "No user discovered"); return; }
+      if (toolName === "manifold_get_comments" && !cache.marketId) { ctx.skip(true, "No market discovered"); return; }
+      if (toolName === "manifold_get_group_by_id" && !cache.groupId) { ctx.skip(true, "No group discovered"); return; }
+      if ((toolName === "manifold_get_user" || toolName === "manifold_get_user_lite") && !cache.username) { ctx.skip(true, "No user discovered"); return; }
 
       const result = await tool.execute(
         makeArgs(),
@@ -221,47 +227,68 @@ describe("live API — public read tools", () => {
         { signal: undefined, toolCallId: "" },
       );
       expect(result).toBeDefined();
-      expect(typeof result).toBe("object");
+      expect(result).not.toBeNull();
+      if (shape === "array") {
+        expect(Array.isArray(result)).toBe(true);
+      } else {
+        expect(typeof result).toBe("object");
+        expect(Array.isArray(result)).toBe(false);
+      }
+      if (shape === "prob") {
+        // Binary markets return { prob: number }; multi-choice markets return
+        // { answerProbs: Record<string, number> }. Assert whichever is present.
+        const probResult = result as { prob?: number; answerProbs?: Record<string, number> };
+        if (probResult.prob !== undefined) {
+          expect(typeof probResult.prob).toBe("number");
+          expect(probResult.prob).toBeGreaterThanOrEqual(0);
+          expect(probResult.prob).toBeLessThanOrEqual(1);
+        } else {
+          expect(probResult.answerProbs).toBeDefined();
+          expect(typeof probResult.answerProbs).toBe("object");
+          for (const p of Object.values(probResult.answerProbs!)) {
+            expect(p).toBeGreaterThanOrEqual(0);
+            expect(p).toBeLessThanOrEqual(1);
+          }
+        }
+      }
     }, 15000);
   }
 
-  runLiveTest("manifold_search_markets", () => ({ term: "AI" }));
-  runLiveTest("manifold_get_market", () => ({ marketId: cache.marketId }));
-  runLiveTest("manifold_get_market_by_slug", () => ({ marketSlug: cache.marketSlug }));
-  runLiveTest("manifold_list_markets", () => ({}));
-  runLiveTest("manifold_get_market_prob", () => ({ marketId: cache.marketId }));
-  runLiveTest("manifold_get_market_probs", () => ({ ids: [cache.marketId] }));
-  runLiveTest("manifold_get_market_positions", () => ({ marketId: cache.marketId }));
-  runLiveTest("manifold_get_user", () => ({ username: cache.username }));
-  runLiveTest("manifold_get_user_lite", () => ({ username: cache.username }));
-  runLiveTest("manifold_get_user_by_id", () => ({ id: cache.userId }));
-  runLiveTest("manifold_get_user_by_id_lite", () => ({ id: cache.userId }));
-  runLiveTest("manifold_list_users", () => ({}));
-  runLiveTest("manifold_get_bets", () => ({ limit: 1 }));
-  runLiveTest("manifold_get_comments", () => ({ contractId: cache.marketId }));
-  runLiveTest("manifold_get_groups", () => ({ limit: 1 }));
-  runLiveTest("manifold_get_group", () => ({ slug: "technology" }));
-  runLiveTest("manifold_get_group_by_id", () => ({ id: cache.groupId }));
-  runLiveTest("manifold_get_leagues", () => ({ cohort: "all", season: 2025 }));
-  runLiveTest("manifold_get_boost_history", () => ({ limit: 1 }));
+  runLiveTest("manifold_search_markets", () => ({ term: "AI" }), "array");
+  runLiveTest("manifold_get_market", () => ({ marketId: cache.marketId }), "object");
+  runLiveTest("manifold_get_market_by_slug", () => ({ marketSlug: cache.marketSlug }), "object");
+  runLiveTest("manifold_list_markets", () => ({}), "array");
+  runLiveTest("manifold_get_market_prob", () => ({ marketId: cache.marketId }), "prob");
+  runLiveTest("manifold_get_market_probs", () => ({ ids: [cache.marketId] }), "object");
+  runLiveTest("manifold_get_market_positions", () => ({ marketId: cache.marketId }), "array");
+  runLiveTest("manifold_get_user", () => ({ username: cache.username }), "object");
+  runLiveTest("manifold_get_user_lite", () => ({ username: cache.username }), "object");
+  runLiveTest("manifold_get_user_by_id", () => ({ id: cache.userId }), "object");
+  runLiveTest("manifold_get_user_by_id_lite", () => ({ id: cache.userId }), "object");
+  runLiveTest("manifold_list_users", () => ({}), "array");
+  runLiveTest("manifold_get_bets", () => ({ limit: 1 }), "array");
+  runLiveTest("manifold_get_comments", () => ({ contractId: cache.marketId }), "array");
+  runLiveTest("manifold_get_groups", () => ({ limit: 1 }), "array");
+  runLiveTest("manifold_get_group", () => ({ slug: "technology" }), "object");
+  runLiveTest("manifold_get_group_by_id", () => ({ id: cache.groupId }), "object");
+  runLiveTest("manifold_get_leagues", () => ({ cohort: "all", season: 2025 }), "array");
+  runLiveTest("manifold_get_boost_history", () => ({ limit: 1 }), "object");
 });
 
 // ── Authenticated read tools (require API key) ─────────────────────
 
 describe("live API — authenticated read tools", () => {
   beforeAll(async () => {
+    if (!process.env.MANIFOLD_API_KEY) return;
     await discoverUser();
   }, 10000);
 
   function runAuthedTest(
     toolName: string,
     makeArgs: (user: { userId: string }) => Record<string, unknown>,
+    shape: "array" | "object" | "prob" = "object",
   ): void {
-    it(toolName, async () => {
-      if (!process.env.MANIFOLD_API_KEY) {
-        throw new Error(`MANIFOLD_API_KEY not set — skipping: ${toolName}`);
-      }
-
+    it.skipIf(!process.env.MANIFOLD_API_KEY)(toolName, async () => {
       const tool = mcpTools.find((t) => t.name === toolName);
       expect(tool).toBeDefined();
       if (!tool) return;
@@ -281,7 +308,13 @@ describe("live API — authenticated read tools", () => {
           { signal: controller.signal, toolCallId: "" },
         );
         expect(result).toBeDefined();
-        expect(typeof result).toBe("object");
+        expect(result).not.toBeNull();
+        if (shape === "array") {
+          expect(Array.isArray(result)).toBe(true);
+        } else {
+          expect(typeof result).toBe("object");
+          expect(Array.isArray(result)).toBe(false);
+        }
       } finally {
         clearTimeout(timeout);
       }
@@ -290,9 +323,39 @@ describe("live API — authenticated read tools", () => {
 
   runAuthedTest("manifold_get_me", () => ({}));
   runAuthedTest("manifold_get_portfolio", (u) => ({ userId: u.userId }));
-  runAuthedTest("manifold_get_portfolio_history", (u) => ({ userId: u.userId, period: "allTime" }));
+  runAuthedTest("manifold_get_portfolio_history", (u) => ({ userId: u.userId, period: "allTime" }), "array");
   runAuthedTest("manifold_get_contract_metrics", (u) => ({ userId: u.userId, limit: 1 }));
-  runAuthedTest("manifold_get_transactions", () => ({ limit: 1 }));
+
+  // get_transactions needs fromId scoped to the authenticated user (not the
+  // random user from discoverUser) to avoid a slow unbounded global query.
+  it.skipIf(!process.env.MANIFOLD_API_KEY)("manifold_get_transactions", async () => {
+    const tool = mcpTools.find((t) => t.name === "manifold_get_transactions");
+    expect(tool).toBeDefined();
+    if (!tool) return;
+
+    // Discover the authenticated user's ID via get_me if not cached
+    if (!cache.authedUserId) {
+      const meTool = mcpTools.find((t) => t.name === "manifold_get_me");
+      expect(meTool).toBeDefined();
+      if (!meTool) return;
+      const meResult = await meTool.execute({}, { apiKey: process.env.MANIFOLD_API_KEY }, { signal: undefined, toolCallId: "" });
+      cache.authedUserId = (meResult as Record<string, unknown>).id as string;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000);
+    try {
+      const result = await tool.execute(
+        { fromId: cache.authedUserId, limit: 1 },
+        { apiKey: process.env.MANIFOLD_API_KEY },
+        { signal: controller.signal, toolCallId: "" },
+      );
+      expect(result).toBeDefined();
+      expect(Array.isArray(result)).toBe(true);
+    } finally {
+      clearTimeout(timeout);
+    }
+  }, 30000);
 });
 
 // ── Error shape tests (FR-021, SC-008) ────────────────────────────
@@ -311,28 +374,21 @@ describe("error shape", () => {
       ),
     ).rejects.toThrow();
   });
-
   it("401 for authed tools without API key surfaces auth error", async () => {
     const tool = mcpTools.find((t) => t.name === "manifold_get_me");
     expect(tool).toBeDefined();
     if (!tool) return;
 
-    try {
-      await tool.execute(
+    // Single call: asserts the promise rejects AND the error has the auth
+    // category + 401 status. toMatchObject matches own enumerable props set
+    // by the ManifoldError constructor (category, status).
+    await expect(
+      tool.execute(
         {},
         { apiKey: undefined },
         { signal: undefined, toolCallId: "" },
-      );
-    } catch (cause) {
-      const error = cause as Error & { category?: string; status?: number; body?: string };
-      expect(error).toBeDefined();
-      if (error.category) {
-        expect(["upstream", "auth", "network", "timeout", "validation"]).toContain(error.category);
-      }
-      if (error.status) {
-        expect(error.status).toBe(401);
-      }
-    }
+      ),
+    ).rejects.toMatchObject({ category: "auth", status: 401 });
   });
 });
 
@@ -367,16 +423,18 @@ describe("write tools", () => {
 
 // ── Write tools — live integration tests (opt-in) ─────────────────
 // Set MANIFOLD_RUN_WRITE_TESTS=1 to run these. Uses a pre-created public
-// BINARY test market owned by the API-key user (S6E2gRAplL). The market
-// stays up indefinitely — no afterAll cleanup. Each run costs ~M$3
+// BINARY test market owned by the API-key user (qPIlzUsCnP). The market
+// stays up indefinitely — no afterAll cleanup. Default cost is ~M$3
 // (M$1 bet + M$1 comment + M$1 liquidity), partially recovered by selling.
+// With MANIFOLD_API_KEY2 set, add M$10 for send_mana. cancel_bet,
+// market_group, and close_market are net-zero.
 
 describe.skipIf(!process.env.MANIFOLD_RUN_WRITE_TESTS)("live API — write tools (opt-in)", () => {
   // Uses a single pre-created test market owned by the API-key user.
   // The market is public (unlisted requires identity verification on
   // Manifold's side) and stays up indefinitely.
   // Override with MANIFOLD_TEST_MARKET_ID if needed.
-  const testMarketId = process.env.MANIFOLD_TEST_MARKET_ID || "S6E2gRAplL";
+  const testMarketId = process.env.MANIFOLD_TEST_MARKET_ID || "qPIlzUsCnP";
   const apiKey = process.env.MANIFOLD_API_KEY;
 
   function findTool(name: string) {
@@ -494,6 +552,127 @@ describe.skipIf(!process.env.MANIFOLD_RUN_WRITE_TESTS)("live API — write tools
       const sale = result as Record<string, unknown>;
       expect(sale.betId).toBeDefined();
       expect(sale.outcome).toBe("YES");
+    } finally {
+      cleanup();
+    }
+  }, 30000);
+
+  // 6. Cancel an unfilled limit order — net M$0 (mana refunded)
+  it("manifold_cancel_bet cancels an unfilled limit order", async () => {
+    const betTool = findTool("manifold_place_bet");
+    const cancelTool = findTool("manifold_cancel_bet");
+    const { signal, cleanup } = makeAbort();
+    try {
+      // Place a limit order at 0.01 — won't fill at current prob ~0.5
+      const betResult = await betTool.execute(
+        { contractId: testMarketId, outcome: "YES", amount: 1, limitProb: 0.01 },
+        { apiKey },
+        { signal, toolCallId: "" },
+      );
+      const bet = betResult as Record<string, unknown>;
+      const betId = bet.betId as string;
+      expect(betId).toBeDefined();
+
+      // Cancel it — bet/cancel returns a LimitBet with isCancelled: true
+      const cancelResult = await cancelTool.execute(
+        { betId },
+        { apiKey },
+        { signal, toolCallId: "" },
+      );
+      expect(cancelResult).toBeDefined();
+      const cancelled = cancelResult as Record<string, unknown>;
+      expect(cancelled.isCancelled).toBe(true);
+    } finally {
+      cleanup();
+    }
+  }, 30000);
+
+  // 7. Tag and untag the test market with a group — M$0, fully reversible
+  it("manifold_market_group tags and untags the test market", async (ctx) => {
+    const tool = findTool("manifold_market_group");
+    const { signal, cleanup } = makeAbort();
+    try {
+      // Discover a group to tag with
+      const groupsTool = findTool("manifold_get_groups");
+      const groupsResult = await groupsTool.execute(
+        { limit: 1 },
+        { apiKey },
+        { signal, toolCallId: "" },
+      );
+      const groupId = firstId(groupsResult);
+      if (!groupId) {
+        ctx.skip(true, "No group discovered");
+        return;
+      }
+
+      // Tag — market/:contractId/group returns { success: true }
+      const tagResult = await tool.execute(
+        { contractId: testMarketId, groupId, remove: false },
+        { apiKey },
+        { signal, toolCallId: "" },
+      );
+      expect(tagResult).toEqual({ success: true });
+
+      // Untag
+      const untagResult = await tool.execute(
+        { contractId: testMarketId, groupId, remove: true },
+        { apiKey },
+        { signal, toolCallId: "" },
+      );
+      expect(untagResult).toEqual({ success: true });
+    } finally {
+      cleanup();
+    }
+  }, 30000);
+
+  // 8. Update the close time to 2 years out — M$0, doesn't close the market
+  it("manifold_close_market updates the close time", async () => {
+    const tool = findTool("manifold_close_market");
+    const { signal, cleanup } = makeAbort();
+    try {
+      const newCloseTime = Date.now() + 2 * 365 * 24 * 60 * 60 * 1000;
+      const result = await tool.execute(
+        { contractId: testMarketId, closeTime: newCloseTime },
+        { apiKey },
+        { signal, toolCallId: "" },
+      );
+      expect(result).toEqual({ success: true });
+    } finally {
+      cleanup();
+    }
+  }, 30000);
+
+  // 9. Send M$10 to the second account — recoverable since both accounts are owned
+  // by the same user. Requires MANIFOLD_API_KEY2 (second account) to discover the
+  // recipient ID. Upstream returns { success: true } (endpoint.ts falls back when
+  // the handler returns undefined).
+  it("manifold_send_mana sends mana to another account", async (ctx) => {
+    const apiKey2 = process.env.MANIFOLD_API_KEY2;
+    if (!apiKey2) {
+      ctx.skip(true, "MANIFOLD_API_KEY2 not set");
+      return;
+    }
+    const tool = findTool("manifold_send_mana");
+    const meTool = findTool("manifold_get_me");
+    const { signal, cleanup } = makeAbort();
+    try {
+      // Discover the second account's user ID
+      const meResult = await meTool.execute(
+        {},
+        { apiKey: apiKey2 },
+        { signal, toolCallId: "" },
+      );
+      const recipientId = (meResult as Record<string, unknown>).id as string;
+      expect(recipientId).toBeDefined();
+
+      // Send M$10 from primary account to second account
+      // (M$10 is the non-admin minimum)
+      const result = await tool.execute(
+        { toIds: [recipientId], amount: 10, message: "API integration test transfer" },
+        { apiKey },
+        { signal, toolCallId: "" },
+      );
+      expect(result).toEqual({ success: true });
     } finally {
       cleanup();
     }
