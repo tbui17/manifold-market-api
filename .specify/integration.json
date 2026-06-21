@@ -1,0 +1,20 @@
+{
+  "version": "0.10.2",
+  "integration_state_schema": 1,
+  "installed_integrations": [
+    "pi",
+    "claude"
+  ],
+  "integration_settings": {
+    "pi": {
+      "script": "ps",
+      "invoke_separator": "."
+    },
+    "claude": {
+      "script": "ps",
+      "invoke_separator": "-"
+    }
+  },
+  "integration": "pi",
+  "default_integration": "pi"
+}

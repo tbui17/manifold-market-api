@@ -1,19 +1,62 @@
 {
   "id": "manifold-markets",
   "name": "Manifold Markets",
-  "description": "Add Manifold Markets tools to OpenClaw.",
+  "description": "Query and act on Manifold Markets prediction markets — search markets, fetch users, place bets, manage positions, and more.",
   "version": "0.1.0",
   "configSchema": {
     "type": "object",
-    "additionalProperties": false,
-    "properties": {}
+    "properties": {
+      "apiKey": {
+        "type": "string",
+        "description": "Manifold Markets API key for authenticated endpoints. Obtain from your Manifold profile → edit → refresh API key."
+      }
+    }
   },
   "activation": {
     "onStartup": true
   },
   "contracts": {
     "tools": [
-      "echo"
+      "manifold_search_markets",
+      "manifold_get_market",
+      "manifold_get_market_by_slug",
+      "manifold_list_markets",
+      "manifold_get_market_prob",
+      "manifold_get_market_probs",
+      "manifold_get_market_positions",
+      "manifold_get_user",
+      "manifold_get_user_lite",
+      "manifold_get_user_by_id",
+      "manifold_get_user_by_id_lite",
+      "manifold_list_users",
+      "manifold_search_users",
+      "manifold_get_bets",
+      "manifold_get_comments",
+      "manifold_get_groups",
+      "manifold_get_group",
+      "manifold_get_group_by_id",
+      "manifold_get_leagues",
+      "manifold_get_boost_history",
+      "manifold_get_me",
+      "manifold_get_portfolio",
+      "manifold_get_portfolio_history",
+      "manifold_get_contract_metrics",
+      "manifold_get_transactions",
+      "manifold_place_bet",
+      "manifold_place_multi_bet",
+      "manifold_cancel_bet",
+      "manifold_create_market",
+      "manifold_resolve_market",
+      "manifold_sell_shares",
+      "manifold_close_market",
+      "manifold_add_liquidity",
+      "manifold_add_answer",
+      "manifold_market_group",
+      "manifold_rebalance",
+      "manifold_add_bounty",
+      "manifold_award_bounty",
+      "manifold_send_mana",
+      "manifold_create_comment"
     ]
   }
 }
