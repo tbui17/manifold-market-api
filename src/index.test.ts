@@ -364,3 +364,138 @@ describe("write tools", () => {
     });
   }
 });
+
+// ── Write tools — live integration tests (opt-in) ─────────────────
+// Set MANIFOLD_RUN_WRITE_TESTS=1 to run these. Uses a pre-created public
+// BINARY test market owned by the API-key user (S6E2gRAplL). The market
+// stays up indefinitely — no afterAll cleanup. Each run costs ~M$3
+// (M$1 bet + M$1 comment + M$1 liquidity), partially recovered by selling.
+
+describe.skipIf(!process.env.MANIFOLD_RUN_WRITE_TESTS)("live API — write tools (opt-in)", () => {
+  // Uses a single pre-created test market owned by the API-key user.
+  // The market is public (unlisted requires identity verification on
+  // Manifold's side) and stays up indefinitely.
+  // Override with MANIFOLD_TEST_MARKET_ID if needed.
+  const testMarketId = process.env.MANIFOLD_TEST_MARKET_ID || "S6E2gRAplL";
+  const apiKey = process.env.MANIFOLD_API_KEY;
+
+  function findTool(name: string) {
+    const tool = mcpTools.find((t) => t.name === name);
+    if (!tool) throw new Error(`Tool not found: ${name}`);
+    return tool;
+  }
+
+  function makeAbort(ms = 25000) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), ms);
+    return {
+      signal: controller.signal,
+      cleanup: () => clearTimeout(timeout),
+    };
+  }
+
+  beforeAll(() => {
+    if (!apiKey) throw new Error("MANIFOLD_API_KEY not set — cannot run write tests");
+    if (!testMarketId) throw new Error("MANIFOLD_TEST_MARKET_ID not set");
+  });
+
+  // 1. Place a bet (real, not dryRun) — costs M$1, gives us YES shares to sell
+  it("manifold_place_bet places a bet and returns a bet object", async () => {
+    const tool = findTool("manifold_place_bet");
+    const { signal, cleanup } = makeAbort();
+    try {
+      const result = await tool.execute(
+        { contractId: testMarketId, outcome: "YES", amount: 1 },
+        { apiKey },
+        { signal, toolCallId: "" },
+      );
+      expect(result).toBeDefined();
+      const bet = result as Record<string, unknown>;
+      expect(bet.amount).toBe(1);
+      expect(typeof bet.shares).toBe("number");
+      expect(bet.outcome).toBe("YES");
+      expect(bet.betId).toBeDefined();
+    } finally {
+      cleanup();
+    }
+  }, 30000);
+
+  // 2. Place a bet with dryRun=true — zero cost, no state change
+  it("manifold_place_bet (dryRun) returns a simulated bet without spending mana", async () => {
+    const tool = findTool("manifold_place_bet");
+    const { signal, cleanup } = makeAbort();
+    try {
+      const result = await tool.execute(
+        { contractId: testMarketId, outcome: "NO", amount: 1, dryRun: true },
+        { apiKey },
+        { signal, toolCallId: "" },
+      );
+      expect(result).toBeDefined();
+      const bet = result as Record<string, unknown>;
+      expect(bet.amount).toBe(1);
+      expect(typeof bet.shares).toBe("number");
+      expect(bet.outcome).toBe("NO");
+    } finally {
+      cleanup();
+    }
+  }, 30000);
+
+  // 3. Create a comment on our own market — costs M$1
+  it("manifold_create_comment creates a comment on the disposable market", async () => {
+    const tool = findTool("manifold_create_comment");
+    const { signal, cleanup } = makeAbort();
+    try {
+      const result = await tool.execute(
+        { contractId: testMarketId, markdown: "Test comment on disposable market." },
+        { apiKey },
+        { signal, toolCallId: "" },
+      );
+      expect(result).toBeDefined();
+      const comment = result as Record<string, unknown>;
+      expect(comment.id).toBeDefined();
+      expect(typeof comment.id).toBe("string");
+      expect(comment.userId).toBeDefined();
+    } finally {
+      cleanup();
+    }
+  }, 30000);
+
+  // 4. Add liquidity to our own market — costs M$1
+  it("manifold_add_liquidity adds liquidity and returns a provision", async () => {
+    const tool = findTool("manifold_add_liquidity");
+    const { signal, cleanup } = makeAbort();
+    try {
+      const result = await tool.execute(
+        { contractId: testMarketId, amount: 1 },
+        { apiKey },
+        { signal, toolCallId: "" },
+      );
+      expect(result).toBeDefined();
+      const liq = result as Record<string, unknown>;
+      expect(liq.userId).toBeDefined();
+    } finally {
+      cleanup();
+    }
+  }, 30000);
+
+  // 5. Sell the YES shares we acquired in test #1 — recovers mana
+  it("manifold_sell_shares sells YES shares back to mana", async () => {
+    const tool = findTool("manifold_sell_shares");
+    const { signal, cleanup } = makeAbort();
+    try {
+      const result = await tool.execute(
+        { contractId: testMarketId, outcome: "YES" },
+        { apiKey },
+        { signal, toolCallId: "" },
+      );
+      expect(result).toBeDefined();
+      // Sell returns a CandidateBet & { betId: string } — a bet-like
+      // object with amount, shares, outcome, betId. No status field.
+      const sale = result as Record<string, unknown>;
+      expect(sale.betId).toBeDefined();
+      expect(sale.outcome).toBe("YES");
+    } finally {
+      cleanup();
+    }
+  }, 30000);
+});
