@@ -260,7 +260,7 @@ Default write-test cost is ~M$3 (place bet, comment, add liquidity, then recover
 |---|---|---|
 | `auth`-category 401 error | Missing or invalid key | Add `apiKey` to the plugin config |
 | `upstream`-category 404 | Unknown market/user/group ID | Check the ID/slug |
-| `MANIFOLD_API_KEY not set` during `npm publish` | Auth test guard | Fixed as of v0.2.0 — publish now works without the key |
+| `npm publish` fails locally | `prepublishOnly` runs `plugin:validate` + tests | Ensure build passes locally first, or publish via the Release workflow (tag + GitHub Release) |
 | Tests show 9 skipped | `MANIFOLD_RUN_WRITE_TESTS` not set | Set it to run opt-in live write tests |
 | MCP client shows no tools | Server didn't start or wasn't registered | Verify `npm run build` and the path in your MCP config |
 
@@ -270,6 +270,26 @@ Default write-test cost is ~M$3 (place bet, comment, add liquidity, then recover
 - **Shared client**: `api-client.ts` is the only module that knows about HTTP, headers, base URL, and error wrapping. Both the OpenClaw plugin and MCP server use it.
 - **Rely-on-upstream auth**: there is no per-tool auth-required metadata. The plugin sends requests with whatever key is configured (including none) and lets the upstream 401/403 surface as an `auth` or `upstream` error.
 - **Uniform errors**: every failure is wrapped in `ManifoldError` with `{ category: "upstream"\|"auth"\|"network"\|"timeout"\|"validation", message, status?, body? }`.
+
+## CI/CD
+
+GitHub Actions workflows live in `.github/workflows/`:
+
+- **CI** (`.github/workflows/ci.yml`) — runs on every push to `main` and every PR. Builds the plugin, validates the manifest, and runs the test suite on Node 20 and 22. Live integration tests hit the Manifold API; authed tests skip without `MANIFOLD_API_KEY`.
+- **Release** (`.github/workflows/release.yml`) — triggered when a GitHub Release is published. Runs the full build + test suite, then publishes to npm with provenance. Requires the `NPM_TOKEN` repository secret.
+
+### Releasing a new version
+
+1. Bump `version` in `package.json` and `openclaw.plugin.json`
+2. Commit: `git commit -am "v0.3.0"`
+3. Tag: `git tag v0.3.0 && git push origin v0.3.0`
+4. Create the release: `gh release create v0.3.0 --generate-notes`
+
+The Release workflow publishes to npm automatically. Provenance is enabled — the published package links back to the workflow run that built it.
+
+### Dependabot
+
+`.github/dependabot.yml` opens weekly PRs for npm dependencies and GitHub Actions. Updates are grouped (TypeScript type defs, Vitest, GitHub Actions) to reduce PR noise.
 
 ## License
 

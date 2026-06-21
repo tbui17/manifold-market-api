@@ -1,0 +1,41 @@
+name: Release
+
+# Triggered when a GitHub Release is published. The standard npm provenance
+# pattern from https://docs.npmjs.com/generating-provenance-statements.
+# Workflow: bump version in package.json → commit → tag → gh release create.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write  # required for npm provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build & validate plugin
+        run: npm run plugin:validate
+
+      - name: Test
+        run: npm test
+
+      # --ignore-scripts skips prepublishOnly, which re-runs the exact
+      # plugin:validate + test steps above. --provenance generates a
+      # signed attestation linking the package to this workflow run.
+      - name: Publish to npm
+        run: npm publish --provenance --ignore-scripts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
