@@ -273,7 +273,7 @@ describe("live API — authenticated read tools", () => {
       const args = makeArgs({ userId: cache.userId });
 
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000);
+      const timeout = setTimeout(() => controller.abort(), 25000);
       try {
         const result = await tool.execute(
           args,
