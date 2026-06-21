@@ -51,7 +51,7 @@
     "openclaw": "latest",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0",
-    "vitest": "^3.2.0"
+    "vitest": "^4.1.9"
   },
   "openclaw": {
     "extensions": [
