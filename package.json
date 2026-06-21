@@ -23,7 +23,7 @@
     "url": "https://github.com/tbui17/manifold-market-api/issues"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

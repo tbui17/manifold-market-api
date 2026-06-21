@@ -275,7 +275,7 @@ Default write-test cost is ~M$3 (place bet, comment, add liquidity, then recover
 
 GitHub Actions workflows live in `.github/workflows/`:
 
-- **CI** (`.github/workflows/ci.yml`) — runs on every push to `main` and every PR. Builds the plugin, validates the manifest, and runs the test suite on Node 20 and 22. Live integration tests hit the Manifold API; authed tests skip without `MANIFOLD_API_KEY`.
+- **CI** (`.github/workflows/ci.yml`) — runs on every push to `main` and every PR. Builds the plugin, validates the manifest, and runs the test suite on Node 22. Live integration tests hit the Manifold API; authed tests skip without `MANIFOLD_API_KEY`.
 - **Release** (`.github/workflows/release.yml`) — triggered when a GitHub Release is published. Runs the full build + test suite, then publishes to npm with provenance. Requires the `NPM_TOKEN` repository secret.
 
 ### Releasing a new version
